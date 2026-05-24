@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>戒酒時間計時器🍷</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --pink:       #F4A7BB;
+      --rose:       #C0506A;
+      --rose-lt:    #E0708A;
+      --text:       #3D2030;
+      --bubble-bg:  rgba(255,255,255,0.93);
+    }
+
+    body {
+      font-family: 'Nunito', system-ui, sans-serif;
+      background: linear-gradient(155deg, #FFF0F5 0%, #FCE4EC 55%, #F8BBD9 100%);
+      min-height: 100vh;
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* ── Bokeh ─────────────────────────────────────────────────── */
+    #bokeh {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    #bokeh span {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(244,167,187,0.55) 0%, transparent 70%);
+      animation: bokehFloat linear infinite;
+    }
+    @keyframes bokehFloat {
+      0%,100% { transform: translateY(0)   scale(1);    opacity: .5; }
+      50%      { transform: translateY(-28px) scale(1.06); opacity: .8; }
+    }
+
+    /* ── Screens ───────────────────────────────────────────────── */
+    .screen {
+      position: relative;
+      z-index: 1;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px 20px;
+    }
+    .screen.active { display: flex; }
+
+    .inner {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Welcome ───────────────────────────────────────────────── */
+    .w-title {
+      font-size: 2.6rem;
+      font-weight: 900;
+      color: var(--rose);
+      text-shadow: 2px 3px 12px rgba(192,80,106,.2);
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    .w-sub {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--pink);
+      margin-bottom: 24px;
+    }
+    /* ── 兔子容器（影片 / SVG 共用） ────────────────────────── */
+    #wBunnyOuter {
+      position: relative;
+      width: 100%;
+      margin: 0 auto 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── AI 影片模式 ──────────────────────────────────────────── */
+    #wVideo {
+      display: none;               /* 放入影片後自動顯示 */
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 20px;
+      box-shadow: 0 6px 28px rgba(192,80,106,0.28);
+      transition: opacity 0.35s ease;
+    }
+    #wVideo.v-fade { opacity: 0; }
+
+    /* ── SVG 兔子角色 ─────────────────────────────────────────── */
+    #svgBunny {
+      display: block;
+      filter: drop-shadow(0 6px 22px rgba(192,80,106,0.25));
+      overflow: visible;
+    }
+    /* 整體角色群組（動畫 class 加在這裡） */
+    #welcomeBunny {
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+    /* 耳朵：從根部（底部）旋轉 */
+    #earL, #earR {
+      transform-box: fill-box;
+      transform-origin: 50% 100%;
+    }
+    /* 眼睛、手臂、胡蘿蔔：從中心變換 */
+    #eyeL, #eyeR, #armL, #armR, #carrot {
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+
+    /* ── 常駐微動畫（耳朵、眨眼） ──────────────────────────── */
+    @keyframes earIdleL {
+      0%,100% { transform: rotate(0deg); }
+      35%     { transform: rotate(-7deg); }
+      70%     { transform: rotate(5deg); }
+    }
+    @keyframes earIdleR {
+      0%,100% { transform: rotate(0deg); }
+      35%     { transform: rotate(7deg); }
+      70%     { transform: rotate(-5deg); }
+    }
+    @keyframes eyeBlink {
+      0%,91%,100% { transform: scaleY(1); }
+      94%,98%     { transform: scaleY(0.06); }
+    }
+    #earL { animation: earIdleL 2.8s ease-in-out infinite; }
+    #earR { animation: earIdleR 2.8s ease-in-out infinite; }
+    #eyeL { animation: eyeBlink 4.2s ease-in-out infinite; }
+    #eyeR { animation: eyeBlink 4.2s ease-in-out infinite 0.08s; }
+
+    /* ── 活動文字標籤 ───────────────────────────────────────── */
+    .w-activity {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--rose);
+      min-height: 1.6em;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .w-activity span {
+      display: inline-block;
+      animation: actPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+    @keyframes actPop {
+      from { transform: scale(0.6) translateY(8px); opacity: 0; }
+      to   { transform: scale(1)   translateY(0);   opacity: 1; }
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       SVG 角色動畫 keyframes
+       （施加於 #welcomeBunny 整體群組）
+    ══════════════════════════════════════════════════════════ */
+
+    /* 漂浮（待機） */
+    @keyframes svgFloat {
+      0%,100% { transform: translateY(0)    scale(1);    }
+      40%     { transform: translateY(-13px) scale(1.02); }
+      70%     { transform: translateY(-7px)  scale(1.01); }
+    }
+
+    /* 跳跳跳：squash & stretch 三連跳 */
+    @keyframes svgJump {
+      0%    { transform: translateY(0)    scaleY(1)    scaleX(1); }
+      6%    { transform: translateY(4px)   scaleY(0.75) scaleX(1.25); }
+      20%   { transform: translateY(-70px) scaleY(1.14) scaleX(0.9); }
+      33%   { transform: translateY(4px)   scaleY(0.75) scaleX(1.25); }
+      38%   { transform: translateY(0)    scaleY(1)    scaleX(1); }
+      44%   { transform: translateY(4px)   scaleY(0.78) scaleX(1.22); }
+      57%   { transform: translateY(-55px) scaleY(1.11) scaleX(0.92); }
+      70%   { transform: translateY(4px)   scaleY(0.78) scaleX(1.22); }
+      75%   { transform: translateY(0)    scaleY(1)    scaleX(1); }
+      80%   { transform: translateY(4px)   scaleY(0.73) scaleX(1.27); }
+      92%   { transform: translateY(-80px) scaleY(1.16) scaleX(0.88); }
+      100%  { transform: translateY(4px)   scaleY(0.75) scaleX(1.25); }
+    }
+
+    /* 翻跟斗：兩圈，中途縮小 */
+    @keyframes svgSomersault {
+      0%   { transform: rotate(0deg)   scale(1)    translateY(0); }
+      10%  { transform: rotate(0deg)   scale(0.9)  translateY(-20px); }
+      48%  { transform: rotate(180deg) scale(0.75) translateY(-5px); }
+      80%  { transform: rotate(360deg) scale(1)    translateY(0); }
+      88%  { transform: rotate(375deg) scale(1.08) translateY(-10px); }
+      100% { transform: rotate(360deg) scale(1)    translateY(0); }
+    }
+
+    /* 走路：左右蹦蹦跳，帶傾斜感 */
+    @keyframes svgWalk {
+      0%   { transform: translateX(0)    translateY(0)     rotate(0deg); }
+      10%  { transform: translateX(-20px) translateY(-13px)  rotate(-7deg); }
+      20%  { transform: translateX(-52px) translateY(0)     rotate(-10deg); }
+      30%  { transform: translateX(-55px) translateY(-13px)  rotate(-7deg); }
+      40%  { transform: translateX(-28px) translateY(-3px)  rotate(-3deg); }
+      50%  { transform: translateX(0)    translateY(0)     rotate(0deg); }
+      60%  { transform: translateX(20px)  translateY(-13px)  rotate(7deg); }
+      70%  { transform: translateX(52px)  translateY(0)     rotate(10deg); }
+      80%  { transform: translateX(55px)  translateY(-13px)  rotate(7deg); }
+      90%  { transform: translateX(28px)  translateY(-3px)  rotate(3deg); }
+      100% { transform: translateX(0)    translateY(0)     rotate(0deg); }
+    }
+
+    /* 跳舞：節拍感搖擺 + 跳躍 */
+    @keyframes svgDance {
+      0%   { transform: rotate(0deg)   translateX(0)     translateY(0)     scale(1); }
+      9%   { transform: rotate(-22deg) translateX(-24px)  translateY(-7px)  scale(1.04); }
+      20%  { transform: rotate(0deg)   translateX(0)     translateY(-42px)  scale(1.13); }
+      31%  { transform: rotate(22deg)  translateX(24px)   translateY(-7px)  scale(1.04); }
+      42%  { transform: rotate(0deg)   translateX(0)     translateY(-42px)  scale(1.13); }
+      53%  { transform: rotate(-22deg) translateX(-24px)  translateY(-7px)  scale(1.04); }
+      64%  { transform: rotate(0deg)   translateX(0)     translateY(-50px)  scale(1.17); }
+      75%  { transform: rotate(22deg)  translateX(24px)   translateY(-7px)  scale(1.04); }
+      87%  { transform: rotate(0deg)   translateX(0)     translateY(-24px)  scale(1.08); }
+      94%  { transform: rotate(-8deg)  translateX(-8px)   translateY(-5px)  scale(1.02); }
+      100% { transform: rotate(0deg)   translateX(0)     translateY(0)     scale(1); }
+    }
+
+    /* 吃胡蘿蔔：低頭啃三口 */
+    @keyframes svgEat {
+      0%,100%  { transform: rotate(0deg)  translateY(0); }
+      12%      { transform: rotate(26deg) translateY(17px); }
+      23%      { transform: rotate(5deg)  translateY(3px); }
+      37%      { transform: rotate(26deg) translateY(17px); }
+      48%      { transform: rotate(5deg)  translateY(3px); }
+      62%      { transform: rotate(28deg) translateY(19px); }
+      73%      { transform: rotate(5deg)  translateY(3px); }
+      86%      { transform: rotate(0deg)  translateY(0); }
+    }
+
+    /* 轉圈圈：加速→定速→減速 */
+    @keyframes svgSpin {
+      0%   { transform: rotate(0deg)   scale(1); }
+      25%  { transform: rotate(90deg)  scale(1.06); }
+      50%  { transform: rotate(180deg) scale(1.1); }
+      75%  { transform: rotate(270deg) scale(1.06); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+
+    /* 種花：蹲下兩次挖土，再開心跳起 */
+    @keyframes svgPlant {
+      0%,100%  { transform: translateY(0)     rotate(0deg)   scale(1); }
+      15%      { transform: translateY(28px)   rotate(20deg)  scale(0.88); }
+      28%      { transform: translateY(3px)    rotate(3deg)   scale(1); }
+      43%      { transform: translateY(28px)   rotate(20deg)  scale(0.88); }
+      56%      { transform: translateY(3px)    rotate(3deg)   scale(1); }
+      72%      { transform: translateY(-36px)  rotate(-10deg) scale(1.17); }
+      84%      { transform: translateY(-9px)   rotate(-2deg)  scale(1.06); }
+      94%      { transform: translateY(0)     rotate(0deg)   scale(1); }
+    }
+
+    /* 打羽毛球：兩次揮拍 */
+    @keyframes svgBadminton {
+      0%,100%  { transform: rotate(0deg)   translateX(0)     translateY(0); }
+      12%      { transform: rotate(-26deg) translateX(-18px)  translateY(10px); }
+      26%      { transform: rotate(20deg)  translateX(22px)   translateY(-30px); }
+      38%      { transform: rotate(-4deg)  translateX(-5px)   translateY(-5px); }
+      50%      { transform: rotate(0deg)   translateX(0)     translateY(0); }
+      62%      { transform: rotate(-26deg) translateX(-18px)  translateY(10px); }
+      76%      { transform: rotate(20deg)  translateX(22px)   translateY(-34px); }
+      90%      { transform: rotate(-4deg)  translateX(-4px)   translateY(-4px); }
+    }
+
+    /* ── 手臂各動作專用動畫 ─────────────────────────────────── */
+    @keyframes armDanceL {
+      0%,100% { transform: rotate(0deg) translateY(0); }
+      20%     { transform: rotate(-48deg) translateY(-14px); }
+      42%     { transform: rotate(12deg); }
+      64%     { transform: rotate(-38deg) translateY(-10px); }
+      82%     { transform: rotate(18deg); }
+    }
+    @keyframes armDanceR {
+      0%,100% { transform: rotate(0deg) translateY(0); }
+      20%     { transform: rotate(12deg); }
+      42%     { transform: rotate(48deg) translateY(-14px); }
+      64%     { transform: rotate(8deg); }
+      82%     { transform: rotate(42deg) translateY(-10px); }
+    }
+    @keyframes armEatL {
+      0%,100%      { transform: rotate(0deg); }
+      12%,37%,62%  { transform: rotate(-22deg) translateX(10px); }
+      23%,48%,73%  { transform: rotate(0deg); }
+    }
+    @keyframes armBadR {
+      0%,100%  { transform: rotate(0deg) translateY(0); }
+      12%      { transform: rotate(-38deg) translateY(8px); }
+      26%      { transform: rotate(58deg) translateY(-24px); }
+      38%      { transform: rotate(26deg); }
+      62%      { transform: rotate(-38deg) translateY(8px); }
+      76%      { transform: rotate(58deg) translateY(-28px); }
+      90%      { transform: rotate(22deg); }
+    }
+    @keyframes armWalkL {
+      0%,100%  { transform: rotate(0deg); }
+      25%      { transform: rotate(-28deg); }
+      75%      { transform: rotate(28deg); }
+    }
+    @keyframes armWalkR {
+      0%,100%  { transform: rotate(0deg); }
+      25%      { transform: rotate(28deg); }
+      75%      { transform: rotate(-28deg); }
+    }
+    /* 手臂動畫 by activity */
+    #svgBunny.w-dance    #armL { animation: armDanceL 4.0s ease-in-out 1; }
+    #svgBunny.w-dance    #armR { animation: armDanceR 4.0s ease-in-out 1; }
+    #svgBunny.w-eat      #armL { animation: armEatL   3.0s ease-in-out 1; }
+    #svgBunny.w-eat      #armR { animation: armEatL   3.0s ease-in-out 1 reverse; }
+    #svgBunny.w-badminton #armR { animation: armBadR  1.5s ease-in-out 2; }
+    #svgBunny.w-walk     #armL { animation: armWalkL  3.5s ease-in-out 1; }
+    #svgBunny.w-walk     #armR { animation: armWalkR  3.5s ease-in-out 1; }
+
+    /* 胡蘿蔔出現（吃東西時） */
+    @keyframes carrotPop {
+      0%,10%   { opacity: 0; transform: scale(0.3) rotate(-20deg); }
+      18%      { opacity: 1; transform: scale(1)   rotate(0deg); }
+      82%      { opacity: 1; transform: scale(1)   rotate(0deg); }
+      95%,100% { opacity: 0; transform: scale(0.5); }
+    }
+    #svgBunny.w-eat #carrot { animation: carrotPop 3.0s ease-in-out 1 forwards; }
+
+    /* ── Welcome 動畫 CSS classes ──────────────────────────── */
+    /* class 加在 #svgBunny 上，動畫施加於內部 <g id="welcomeBunny"> */
+    #svgBunny.w-jump       #welcomeBunny { animation: svgJump       3.5s  ease-in-out 1; }
+    #svgBunny.w-somersault #welcomeBunny { animation: svgSomersault 1.4s  ease-in-out 2; }
+    #svgBunny.w-walk       #welcomeBunny { animation: svgWalk       3.5s  ease-in-out 1; }
+    #svgBunny.w-dance      #welcomeBunny { animation: svgDance      4.0s  ease-in-out 1; }
+    #svgBunny.w-eat        #welcomeBunny { animation: svgEat        3.0s  ease-in-out 1; }
+    #svgBunny.w-spin       #welcomeBunny { animation: svgSpin       0.625s linear      4; }
+    #svgBunny.w-plant      #welcomeBunny { animation: svgPlant      3.2s  ease-in-out 1; }
+    #svgBunny.w-badminton  #welcomeBunny { animation: svgBadminton  1.5s  ease-in-out 2; }
+    #svgBunny.w-float      #welcomeBunny { animation: svgFloat      2.5s  ease-in-out infinite; }
+
+    .input-wrap { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+
+    .name-input {
+      width: 100%;
+      padding: 14px 22px;
+      border: 2.5px solid var(--pink);
+      border-radius: 50px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      background: rgba(255,255,255,.88);
+      outline: none;
+      text-align: center;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .name-input:focus {
+      border-color: var(--rose);
+      box-shadow: 0 0 0 3px rgba(192,80,106,.15);
+    }
+    .name-input::placeholder { color: var(--pink); }
+
+    .btn-start {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, var(--rose), var(--rose-lt));
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(192,80,106,.35);
+      transition: transform .15s, box-shadow .15s;
+      letter-spacing: .02em;
+    }
+    .btn-start:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(192,80,106,.45); }
+    .btn-start:active { transform: translateY(0); }
+
+    /* ── Main screen ───────────────────────────────────────────── */
+    .main-inner { gap: 10px; }
+
+    /* 標題上方小兔頭 */
+    .m-head {
+      width: 86px;
+      height: 86px;
+      border-radius: 50%;
+      object-fit: cover;
+      box-shadow: 0 4px 18px rgba(192,80,106,.25);
+      margin-bottom: 0;
+    }
+
+    .m-title {
+      font-size: 1.7rem;
+      font-weight: 900;
+      color: var(--rose);
+      text-shadow: 1px 2px 8px rgba(192,80,106,.18);
+    }
+    .m-greeting {
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--rose-lt);
+      margin-top: -4px;
+    }
+
+    /* Timer */
+    .timer-row {
+      display: flex;
+      gap: 6px;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    .t-unit { display: flex; flex-direction: column; align-items: center; }
+    .t-num {
+      font-size: clamp(2.8rem, 11vw, 4.6rem);
+      font-weight: 900;
+      color: var(--rose);
+      line-height: 1;
+      text-shadow: 2px 4px 10px rgba(192,80,106,.22);
+      min-width: 2.1ch;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .t-label {
+      font-size: .68rem;
+      font-weight: 800;
+      color: var(--pink);
+      margin-top: 4px;
+      letter-spacing: .06em;
+    }
+    .t-sep {
+      font-size: clamp(2.2rem, 9vw, 3.8rem);
+      font-weight: 900;
+      color: var(--pink);
+      line-height: 1.05;
+      padding-top: 3px;
+    }
+
+    /* Bunny zone */
+    .bunny-zone {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+    .bunny-wrap {
+      width: 100%;
+      max-width: 400px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* 主畫面影片（平常顯示） */
+    #mVideo {
+      display: block;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 16px;
+      box-shadow: 0 6px 24px rgba(192,80,106,.18);
+    }
+    /* 反應圖（事件觸發時顯示，平常隱藏） */
+    .bunny-img {
+      display: none;
+      width: 250px;
+      height: 250px;
+      object-fit: cover;
+      border-radius: 50%;
+      box-shadow: 0 8px 32px rgba(192,80,106,.2);
+    }
+
+    /* Speech bubble */
+    .bubble {
+      background: var(--bubble-bg);
+      border: 2px solid var(--pink);
+      border-radius: 20px;
+      padding: 12px 20px;
+      max-width: 300px;
+      font-size: .92rem;
+      font-weight: 700;
+      color: var(--text);
+      text-align: center;
+      box-shadow: 0 4px 16px rgba(192,80,106,.12);
+      line-height: 1.6;
+      opacity: 0;
+      position: relative;
+    }
+    .bubble.big { font-size: 1rem; font-weight: 800; }
+    /* Triangle pointer (top, pointing toward bunny) */
+    .bubble::before {
+      content: '';
+      position: absolute;
+      top: -13px; left: 50%;
+      transform: translateX(-50%);
+      border: 0 solid transparent;
+      border-bottom: 13px solid var(--pink);
+      border-left: 11px solid transparent;
+      border-right: 11px solid transparent;
+    }
+    .bubble::after {
+      content: '';
+      position: absolute;
+      top: -10px; left: 50%;
+      transform: translateX(-50%);
+      border: 0 solid transparent;
+      border-bottom: 11px solid var(--bubble-bg);
+      border-left: 9px solid transparent;
+      border-right: 9px solid transparent;
+    }
+
+    /* Reset button */
+    .btn-reset {
+      padding: 13px 28px;
+      background: rgba(255,255,255,.75);
+      color: var(--rose);
+      border: 2.5px solid var(--pink);
+      border-radius: 50px;
+      font-family: 'Nunito', sans-serif;
+      font-size: .92rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(192,80,106,.1);
+      transition: all .2s;
+    }
+    .btn-reset:hover {
+      background: rgba(255,255,255,.95);
+      border-color: var(--rose);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(192,80,106,.2);
+    }
+    .btn-reset:disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+
+    .btn-change-name {
+      background: none;
+      border: none;
+      font-family: 'Nunito', sans-serif;
+      font-size: .82rem;
+      font-weight: 700;
+      color: var(--pink);
+      cursor: pointer;
+      padding: 4px 8px;
+      opacity: .8;
+      transition: opacity .2s, color .2s;
+    }
+    .btn-change-name:hover { opacity: 1; color: var(--rose); }
+
+    /* ── CSS Animations ────────────────────────────────────────── */
+
+    /* idle float (welcome screen + default bunny idle) */
+    @keyframes idleFloat {
+      0%,100% { transform: translateY(0); }
+      50%      { transform: translateY(-12px); }
+    }
+
+    /* bounce – hourly small hop (bunny-wrap) */
+    @keyframes bounce {
+      0%,100% { transform: translateY(0); }
+      30%     { transform: translateY(-22px); }
+      65%     { transform: translateY(-10px); }
+    }
+
+    /* bigBounce – milestone (bunny-wrap) */
+    @keyframes bigBounce {
+      0%,100% { transform: translateY(0)    scale(1); }
+      20%     { transform: translateY(-55px) scale(1.12); }
+      50%     { transform: translateY(-28px) scale(1.06); }
+      80%     { transform: translateY(-55px) scale(1.12); }
+    }
+
+    /* shake – angry resets (bunny-wrap) */
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      10%     { transform: translateX(-13px); }
+      30%     { transform: translateX(13px); }
+      50%     { transform: translateX(-10px); }
+      70%     { transform: translateX(10px); }
+      90%     { transform: translateX(-6px); }
+    }
+
+    /* wobble – mischievous resets (bunny-wrap) */
+    @keyframes wobble {
+      0%,100% { transform: rotate(0deg); }
+      20%     { transform: rotate(-17deg); }
+      40%     { transform: rotate(17deg); }
+      60%     { transform: rotate(-13deg); }
+      80%     { transform: rotate(13deg); }
+    }
+
+    /* pulse – milestone sustained glow (bunny-wrap) */
+    @keyframes pulse {
+      0%,100% { transform: scale(1); }
+      50%     { transform: scale(1.09); }
+    }
+
+    /* glow effects (bunny-img) */
+    @keyframes glowPink {
+      0%,100% { box-shadow: 0 8px 32px rgba(192,80,106,.2); }
+      50%     { box-shadow: 0 0 0 18px rgba(244,167,187,.4), 0 8px 32px rgba(192,80,106,.2); }
+    }
+    @keyframes glowRed {
+      0%,100% { box-shadow: 0 8px 32px rgba(192,80,106,.2); }
+      50%     { box-shadow: 0 0 0 18px rgba(220,50,50,.38), 0 8px 32px rgba(192,80,106,.2); }
+    }
+    @keyframes glowGold {
+      0%,100% { box-shadow: 0 8px 32px rgba(192,80,106,.2); }
+      50%     { box-shadow: 0 0 0 18px rgba(255,200,0,.48), 0 8px 32px rgba(192,80,106,.2); }
+    }
+
+    /* bubble transitions */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to   { opacity: 0; }
+    }
+
+    /* ── Animation utility classes ─────────────────────────────── */
+    /* duration must match runAnim() call in JS */
+    .do-bounce    { animation: bounce    0.55s ease-in-out 3; }           /* 1.65 s */
+    .do-bigBounce { animation: bigBounce 0.9s  ease-in-out 5; }           /* 4.5  s */
+    .do-shake     { animation: shake     0.55s ease-in-out 1; }           /* 0.55 s */
+    .do-wobble    { animation: wobble    0.70s ease-in-out 3; }           /* 2.1  s */
+    .do-pulse     { animation: pulse     1.2s  ease-in-out infinite; }
+    .do-glowPink  { animation: glowPink  1.5s  ease-in-out 3; }           /* 4.5  s */
+    .do-glowRed   { animation: glowRed   0.8s  ease-in-out 4; }           /* 3.2  s */
+    .do-glowGold  { animation: glowGold  0.8s  ease-in-out 4; }           /* 3.2  s */
+    .do-fadeIn    { animation: fadeInUp  0.4s  ease         forwards; }
+    .do-fadeOut   { animation: fadeOut   0.4s  ease         forwards; }
+
+    /* ── Responsive ────────────────────────────────────────────── */
+    @media (max-height: 680px) {
+      .bunny-wrap, .w-bunny { width: 155px; height: 155px; }
+      .main-inner { gap: 8px; }
+    }
+    @media (max-width: 360px) {
+      .t-num { font-size: 2.5rem; }
+      .t-sep { font-size: 2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Bokeh background particles -->
+<div id="bokeh"></div>
+
+<!-- ══════════════════ WELCOME SCREEN ══════════════════ -->
+<div class="screen active" id="welcomeScreen">
+  <div class="inner" style="align-items:center; gap:0;">
+    <div class="w-title">戒酒時間計時器🍷</div>
+    <div class="w-sub">可愛兔子戒酒計時器</div>
+    <!-- 兔子容器：AI影片 或 SVG 兔子二選一自動切換 -->
+    <div id="wBunnyOuter">
+      <!-- AI影片（放入 assets/videos/ 後自動啟用） -->
+      <video id="wVideo" muted playsinline preload="none"></video>
+      <!-- SVG 兔子角色（備用，無影片時顯示） -->
+    <svg id="svgBunny" viewBox="0 0 200 268" width="210" height="220" xmlns="http://www.w3.org/2000/svg">
+      <!-- 地面陰影 -->
+      <ellipse id="bunShadow" cx="100" cy="262" rx="44" ry="6" fill="rgba(192,80,106,0.13)"/>
+      <!-- 整體兔子群組，動畫 class 施加於此 -->
+      <g id="welcomeBunny">
+
+        <!-- 耳朵（在頭部後面） -->
+        <g id="earL">
+          <ellipse cx="68" cy="60" rx="20" ry="54" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2.5"/>
+          <ellipse cx="68" cy="64" rx="11" ry="42" fill="#FFD1DC"/>
+        </g>
+        <g id="earR">
+          <ellipse cx="132" cy="60" rx="20" ry="54" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2.5"/>
+          <ellipse cx="132" cy="64" rx="11" ry="42" fill="#FFD1DC"/>
+        </g>
+
+        <!-- 身體 -->
+        <ellipse cx="100" cy="200" rx="56" ry="50" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2.5"/>
+
+        <!-- 尾巴（右側） -->
+        <circle cx="151" cy="207" r="14" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2"/>
+
+        <!-- 手臂 -->
+        <g id="armL">
+          <ellipse cx="52" cy="196" rx="13" ry="25" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2.5"/>
+          <!-- 手掌小圓 -->
+          <circle cx="52" cy="220" r="7" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2"/>
+        </g>
+        <g id="armR">
+          <ellipse cx="148" cy="196" rx="13" ry="25" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2.5"/>
+          <circle cx="148" cy="220" r="7" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2"/>
+        </g>
+
+        <!-- 腳掌 -->
+        <ellipse cx="78"  cy="242" rx="23" ry="12" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2.5"/>
+        <ellipse cx="122" cy="242" rx="23" ry="12" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2.5"/>
+
+        <!-- 頭部 -->
+        <circle cx="100" cy="120" r="50" fill="#FFF5F8" stroke="#F4A7BB" stroke-width="2.5"/>
+
+        <!-- 臉頰 -->
+        <ellipse cx="75"  cy="131" rx="16" ry="11" fill="#FFB6C1" opacity="0.58"/>
+        <ellipse cx="125" cy="131" rx="16" ry="11" fill="#FFB6C1" opacity="0.58"/>
+
+        <!-- 眼睛 -->
+        <g id="eyeL">
+          <circle cx="86"  cy="115" r="9"   fill="#3D2030"/>
+          <circle cx="89"  cy="111" r="3.2" fill="white"/>
+        </g>
+        <g id="eyeR">
+          <circle cx="114" cy="115" r="9"   fill="#3D2030"/>
+          <circle cx="117" cy="111" r="3.2" fill="white"/>
+        </g>
+
+        <!-- 鼻子 -->
+        <ellipse cx="100" cy="129" rx="5.5" ry="4.5" fill="#C0506A"/>
+
+        <!-- 嘴巴（笑容） -->
+        <path d="M 92 133 Q 100 141 108 133"
+              fill="none" stroke="#C0506A" stroke-width="2.8" stroke-linecap="round"/>
+
+        <!-- 鬍鬚 -->
+        <line x1="62" y1="127" x2="85" y2="131" stroke="#F4A7BB" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>
+        <line x1="60" y1="134" x2="84" y2="134" stroke="#F4A7BB" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>
+        <line x1="115" y1="131" x2="138" y2="127" stroke="#F4A7BB" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>
+        <line x1="116" y1="134" x2="140" y2="134" stroke="#F4A7BB" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>
+
+        <!-- 胡蘿蔔道具（吃東西動畫時出現） -->
+        <g id="carrot" opacity="0" transform="translate(112,148) rotate(18)">
+          <rect x="-6" y="-18" width="12" height="30" rx="6" fill="#FF8C00"/>
+          <!-- 葉子 -->
+          <line x1="-5" y1="-18" x2="-10" y2="-28" stroke="#52B788" stroke-width="3"   stroke-linecap="round"/>
+          <line x1="0"  y1="-18" x2="0"   y2="-30" stroke="#52B788" stroke-width="3"   stroke-linecap="round"/>
+          <line x1="5"  y1="-18" x2="10"  y2="-28" stroke="#52B788" stroke-width="3"   stroke-linecap="round"/>
+        </g>
+
+      </g><!-- end #welcomeBunny -->
+    </svg>
+    </div><!-- end #wBunnyOuter -->
+    <div class="w-activity" id="wActivity"><span>🐰 兔兔在等你！</span></div>
+    <div class="input-wrap">
+      <input class="name-input" id="nameInput" type="text"
+             placeholder="請輸入你的名字 🐰" maxlength="10" autocomplete="off">
+      <button class="btn-start" id="startBtn">開始戒酒！🐰</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MAIN SCREEN ══════════════════ -->
+<div class="screen" id="mainScreen">
+  <div class="inner main-inner">
+
+    <!-- 兔頭圓圖（標題上方） -->
+    <img class="m-head" src="assets/images/welcome-1.png" alt="兔兔">
+
+    <div class="m-title">戒酒時間計時器🍷</div>
+    <div class="m-greeting" id="greeting"></div>
+
+    <!-- Timer -->
+    <div class="timer-row">
+      <div class="t-unit">
+        <div class="t-num" id="tD">00</div>
+        <div class="t-label">天</div>
+      </div>
+      <div class="t-sep">:</div>
+      <div class="t-unit">
+        <div class="t-num" id="tH">00</div>
+        <div class="t-label">時</div>
+      </div>
+      <div class="t-sep">:</div>
+      <div class="t-unit">
+        <div class="t-num" id="tM">00</div>
+        <div class="t-label">分</div>
+      </div>
+      <div class="t-sep">:</div>
+      <div class="t-unit">
+        <div class="t-num" id="tS">00</div>
+        <div class="t-label">秒</div>
+      </div>
+    </div>
+
+    <!-- 影片輪播 + 反應圖 + 泡泡 -->
+    <div class="bunny-zone">
+      <div class="bunny-wrap" id="bunnyWrap">
+        <!-- 平常：輪播影片 -->
+        <video id="mVideo" muted playsinline preload="none"></video>
+        <!-- 事件時：靜態反應圖 -->
+        <img class="bunny-img" id="bunnyImg" src="assets/images/welcome-1.png" alt="兔兔">
+      </div>
+      <div class="bubble" id="bubble"></div>
+    </div>
+
+    <button class="btn-reset" id="resetBtn">我喝酒了 😢 重新開始</button>
+    <button class="btn-change-name" id="changeNameBtn">✏️ 更改名稱</button>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ─────────────────────────────────────────────────────────────────
+   IMAGE POOLS
+   每個類別有多張變體，每次隨機抽一張，體驗更豐富
+───────────────────────────────────────────────────────────────── */
+const IMG = {
+  happy: [
+    'assets/images/welcome-1.png',
+    'assets/images/welcome-2.png',
+    'assets/images/welcome-3.png',
+    'assets/images/welcome-4.png',
+    'assets/images/welcome-5.png',
+  ],
+  celebrate: [
+    'assets/images/u7119331597_ultra_cute_3D_fluffy_white_bunny_character_chubby_d5da1ba9-a63c-44d5-91fb-b3d726120b91_2.png',
+    'assets/images/u7119331597_ultra_cute_3D_fluffy_white_bunny_character_chubby_f290b3e8-9e8e-4af7-a9b4-5486fec8ad32_0.png',
+    'assets/images/u7119331597_ultra_cute_3D_fluffy_white_bunny_character_chubby_r_1d513641-cf50-4c5b-8ea2-d9623f0a40e3.png',
+  ],
+  pout:   [1,2,3,4,5,6].map(n => `assets/images/reset_pout.png-${n}.png`),
+  pinch:  [1,2,3,4,5,6].map(n => `assets/images/reset_pinch.png-${n}.png`),
+  hips:   [1,2,3,4,5].map(n   => `assets/images/reset_hips.png-${n}.png`),
+  spank:  [1,2,3].map(n       => `assets/images/reset_spank.png-${n}.png`),
+  cheers: [1,2,3,4,5,6].map(n => `assets/images/reset_cheers.png-${n}.png`),
+};
+
+/* ─────────────────────────────────────────────────────────────────
+   MESSAGES
+───────────────────────────────────────────────────────────────── */
+// [N] → 使用者名字
+const HOURLY_MSGS = [
+  '[N]～又過了一個小時耶！兔兔好驕傲你喔 🥺💕',
+  '哇～[N] 真的好棒棒！繼續加油哦！🐰✨',
+  '[N] 你有沒有發現自己越來越厲害了！？兔兔幫你加油！💪🌸',
+  '嘿嘿～[N] 又一小時了！兔兔要給你一個大抱抱 🫂💕',
+  '[N]，你的身體正在慢慢變好喔！兔兔替你開心 🥕✨',
+  '[N]！又撐過一小時了！你知道你有多厲害嗎 🌟',
+  '兔兔想說…[N] 你今天超棒的！繼續保持喔 💖',
+  '[N]，看著計時器一直跑，兔兔覺得好感動喔 🥹',
+  '嗯嗯！[N] 就是這樣！一小時一小時慢慢累積 🐾✨',
+  '[N]～你有沒有聞到？那是健康的味道！兔兔好開心 🌸',
+  '加油加油！[N] 你比你想像的還要勇敢！🐰💕',
+  '[N]！兔兔剛剛幫你數了，又一個小時過去了！棒棒 🎊',
+  '兔兔要告訴你一個秘密，[N]…你真的超級棒！🤫💖',
+  '[N]，每一個小時都是你的勝利！兔兔替你鼓掌 👏✨',
+  '[N]～你的意志力讓兔兔好崇拜喔！繼續撐住 💪🌸',
+  '時間一直走，[N] 也一直變更好！兔兔最愛你了 💕',
+  '[N]！記得喝水喔！你的身體正在謝謝你 🥕💧',
+  '嘿！[N]！兔兔在這裡陪著你！一直都在喔 🐰🌸',
+  '[N]～你做到的每一個小時，都是在為自己寫歷史！✨👑',
+  '哇哦！[N] 又過一小時！兔兔快要感動到飛起來了 🐰💨',
+];
+
+const MILESTONES = [
+  { key:'day1',  secs:86400,   msg:'[N]！！整整一天耶！！兔兔要替你跳舞慶祝啦～🎊' },
+  { key:'day3',  secs:259200,  msg:'三天了！[N] 你是超級英雄！🦸 兔兔超級愛你！💖' },
+  { key:'week1', secs:604800,  msg:'一個禮拜！！！[N] 你太厲害了啦！兔兔感動到哭了 🥹🌟' },
+  { key:'month1',secs:2592000, msg:'一個月！！[N] 你是兔兔見過最勇敢的人！皇冠送給你 👑💕' },
+];
+
+// 5 種重置反應定義
+const RESETS = [
+  { pool:'pout',  anim:'shake',  glow:'glowRed',  ms:550,  msg:'哼！[N] 你是怎麼了啦！！兔兔生氣了啦 😤💢' },
+  { pool:'pinch', anim:'wobble', glow:'glowRed',  ms:2100, msg:'讓兔兔來捏捏你的臉！這樣你就不會想喝酒了！🤏😤' },
+  { pool:'hips',  anim:'shake',  glow:'glowRed',  ms:550,  msg:'你！給我站好！[N] 你知道兔兔有多擔心你嗎！😠' },
+  { pool:'spank', anim:'wobble', glow:'glowRed',  ms:2100, msg:'伸出來！讓兔兔打一下屁股！下次不准再犯！👋😡' },
+  { pool:'cheers',anim:'wobble', glow:'glowGold', ms:2100, msg:'好吧…那就陪你乾一杯！但只有這一次喔！🥂😏' },
+];
+
+/* ─────────────────────────────────────────────────────────────────
+   AI VIDEO SEQUENCER（影片模式）
+   偵測到 assets/videos/ 裡有影片時自動啟用，
+   否則退回 SVG 兔子動畫模式
+───────────────────────────────────────────────────────────────── */
+const VIDEO_ACTS = [
+  { src: 'assets/videos/walk-with-hydrangea.mp4', label: '在繡球花園裡散步 🌸' },
+  { src: 'assets/videos/dance.mp4',               label: '在跳舞♪ ヾ(≧▽≦*)o' },
+  { src: 'assets/videos/planting-flowers.mp4',    label: '在幫盆栽澆水 🪴' },
+  { src: 'assets/videos/chest-push.mp4',          label: '在健身房練胸推 💪' },
+];
+
+// 隨機決定第一支影片，之後順序播放
+let vActIdx = 0;
+let videoMode = false;
+
+// 播放下一支影片（前一支 ended 時自動呼叫）
+function playNextVideo() {
+  const video    = document.getElementById('wVideo');
+  const activity = document.getElementById('wActivity');
+  const act      = VIDEO_ACTS[vActIdx % VIDEO_ACTS.length];
+  vActIdx++;
+
+  // 淡出 → 換片 → 淡入
+  video.classList.add('v-fade');
+  setTimeout(() => {
+    video.src = act.src;
+    video.load();
+    video.play().catch(() => {
+      // 若該片缺失，跳下一片
+      setTimeout(playNextVideo, 200);
+    });
+    activity.innerHTML = `<span>${act.label}</span>`;
+    video.classList.remove('v-fade');
+  }, 350);
+}
+
+// 啟動影片模式（偵測第一支影片是否存在）
+function tryVideoMode() {
+  const probe = document.createElement('video');
+  probe.preload = 'metadata';
+  probe.src = VIDEO_ACTS[0].src;
+
+  probe.oncanplay = () => {
+    if (videoMode) return;           // 避免重複觸發
+    videoMode = true;
+
+    // 隱藏 SVG，顯示 video
+    const svg   = document.getElementById('svgBunny');
+    const video = document.getElementById('wVideo');
+    if (svg) svg.style.display = 'none';
+    video.style.display = 'block';
+    stopWelcomeAnim();
+
+    // 隨機起始
+    vActIdx = Math.floor(Math.random() * VIDEO_ACTS.length);
+    const firstAct = VIDEO_ACTS[vActIdx % VIDEO_ACTS.length];
+    vActIdx++;
+
+    // 第一支直接載入播放（不等 fade delay）
+    video.src = firstAct.src;
+    video.load();
+    document.getElementById('wActivity').innerHTML = `<span>${firstAct.label}</span>`;
+
+    video.play().catch(() => {
+      // 若自動播放被阻擋，等使用者第一次點擊再播
+      const startOnClick = () => {
+        video.play().catch(() => {});
+        document.removeEventListener('click', startOnClick);
+      };
+      document.addEventListener('click', startOnClick);
+    });
+
+    // 每支影片結束後自動播下一支
+    video.addEventListener('ended', playNextVideo);
+  };
+
+  // onerror → 靜默失敗，維持 SVG 模式
+  probe.onerror = () => {};
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   WELCOME SCREEN ANIMATION SEQUENCER（SVG 備用模式）
+   自動輪播：每隔幾秒換一個動作，並更新說明文字
+───────────────────────────────────────────────────────────────── */
+const WELCOME_ACTS = [
+  { cls: 'w-jump',       label: '跳跳跳！🎵',              dur: 3500 },
+  { cls: 'w-somersault', label: '在翻跟斗～😆',            dur: 2800 },
+  { cls: 'w-walk',       label: '在散步～🐾',              dur: 3500 },
+  { cls: 'w-dance',      label: '在跳舞♪ ヾ(≧▽≦*)o',     dur: 4000 },
+  { cls: 'w-eat',        label: '在吃胡蘿蔔 🥕',          dur: 3000 },
+  { cls: 'w-spin',       label: '在轉圈圈！💫',            dur: 2500 },
+  { cls: 'w-plant',      label: '在種花花 🌸',             dur: 3200 },
+  { cls: 'w-badminton',  label: '在打羽毛球！🏸',          dur: 3000 },
+  { cls: 'w-float',      label: '在享受微風 🍃',           dur: 2500 },
+];
+
+// 所有 welcome 動畫 class 名稱（用於清除）
+const ALL_W_CLASSES = WELCOME_ACTS.map(a => a.cls);
+
+let wActIdx  = 0;
+let wTimer   = null;
+
+function nextWelcomeAnim() {
+  // 動畫 class 施加於 <svg id="svgBunny">（#welcomeBunny 是其內部群組）
+  const svg      = document.getElementById('svgBunny');
+  const activity = document.getElementById('wActivity');
+  const act      = WELCOME_ACTS[wActIdx % WELCOME_ACTS.length];
+  wActIdx++;
+
+  // 移除所有動畫 class → 強制 reflow → 加新 class
+  ALL_W_CLASSES.forEach(c => svg.classList.remove(c));
+  void svg.offsetWidth;   // force reflow，讓動畫從頭開始
+
+  svg.classList.add(act.cls);
+
+  // 活動文字：重建 <span> 觸發 actPop 動畫
+  activity.innerHTML = `<span>${act.label}</span>`;
+
+  // 安排下一個動作（+300ms 緩衝）
+  wTimer = setTimeout(nextWelcomeAnim, act.dur + 300);
+}
+
+function startWelcomeAnim() {
+  // 稍微延遲後開始，讓頁面先渲染
+  wTimer = setTimeout(nextWelcomeAnim, 600);
+}
+
+function stopWelcomeAnim() {
+  if (wTimer) { clearTimeout(wTimer); wTimer = null; }
+  const svg = document.getElementById('svgBunny');
+  if (svg) ALL_W_CLASSES.forEach(c => svg.classList.remove(c));
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   STATE
+───────────────────────────────────────────────────────────────── */
+let state = {
+  name:       '',
+  startTime:  0,
+  lastHour:   0,
+  hourIdx:    0,
+  milestones: {},     // { day1: true, day3: true, … }
+};
+
+/* ─────────────────────────────────────────────────────────────────
+   DOM ELEMENTS
+───────────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const E = {
+  welcomeScreen: $('welcomeScreen'),
+  mainScreen:    $('mainScreen'),
+  welcomeBunny:  $('welcomeBunny'),
+  nameInput:     $('nameInput'),
+  startBtn:      $('startBtn'),
+  greeting:      $('greeting'),
+  tD: $('tD'), tH: $('tH'), tM: $('tM'), tS: $('tS'),
+  bunnyWrap:      $('bunnyWrap'),
+  bunnyImg:       $('bunnyImg'),
+  bubble:         $('bubble'),
+  resetBtn:       $('resetBtn'),
+  changeNameBtn:  $('changeNameBtn'),
+};
+
+/* ─────────────────────────────────────────────────────────────────
+   UTILS
+───────────────────────────────────────────────────────────────── */
+const pick  = arr => arr[Math.floor(Math.random() * arr.length)];
+const pad   = n   => String(n).padStart(2, '0');
+const fmt   = (tmpl, name) => tmpl.replace(/\[N\]/g, name);
+
+/* ─────────────────────────────────────────────────────────────────
+   LOCALSTORAGE
+───────────────────────────────────────────────────────────────── */
+function save() {
+  localStorage.setItem('soberHops_v2', JSON.stringify(state));
+}
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem('soberHops_v2'));
+    if (d && d.name && d.startTime) { state = { ...state, ...d }; return true; }
+  } catch (_) {}
+  return false;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   ANIMATION ENGINE
+───────────────────────────────────────────────────────────────── */
+let animating   = false;
+let bubbleTimer = null;
+
+// 給 target 元素加上 CSS class，durationMs 後移除，回傳 Promise
+function runAnim(target, cls, durationMs) {
+  return new Promise(resolve => {
+    target.classList.add(cls);
+    setTimeout(() => { target.classList.remove(cls); resolve(); }, durationMs);
+  });
+}
+
+// 顯示對話泡泡
+function showBubble(text, big = false, stayMs = 4500) {
+  if (bubbleTimer) clearTimeout(bubbleTimer);
+  E.bubble.textContent = text;
+  E.bubble.classList.toggle('big', big);
+  // 強制重啟動畫
+  E.bubble.classList.remove('do-fadeIn', 'do-fadeOut');
+  void E.bubble.offsetHeight;
+  E.bubble.classList.add('do-fadeIn');
+  bubbleTimer = setTimeout(hideBubble, stayMs);
+}
+
+// 隱藏對話泡泡
+function hideBubble() {
+  if (bubbleTimer) clearTimeout(bubbleTimer);
+  E.bubble.classList.remove('do-fadeIn');
+  E.bubble.classList.add('do-fadeOut');
+  setTimeout(() => {
+    E.bubble.classList.remove('do-fadeOut');
+    E.bubble.style.opacity = '';
+  }, 420);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   HOURLY ENCOURAGEMENT  (每小時觸發)
+───────────────────────────────────────────────────────────────── */
+function triggerHourly() {
+  if (animating) return;
+  animating = true;
+
+  pauseMainVideo();
+  E.bunnyImg.src = 'assets/images/welcome-1.png';
+  showBubble(fmt(HOURLY_MSGS[state.hourIdx % HOURLY_MSGS.length], state.name), false, 4800);
+  state.hourIdx++;
+
+  runAnim(E.bunnyWrap, 'do-bounce', 1650);
+  runAnim(E.bunnyImg, 'do-glowPink', 4500).then(() => {
+    animating = false;
+    resumeMainVideo();
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   MILESTONE CELEBRATION  (里程碑)
+───────────────────────────────────────────────────────────────── */
+function triggerMilestone(m) {
+  if (animating) return;
+  animating = true;
+  state.milestones[m.key] = true;
+  save();
+
+  pauseMainVideo();
+  E.bunnyImg.src = pick(IMG.celebrate);
+  showBubble(fmt(m.msg, state.name), true, 7500);
+  fireConfetti(m.key);
+
+  runAnim(E.bunnyWrap, 'do-bigBounce', 4500).then(() => {
+    E.bunnyWrap.classList.add('do-pulse');
+    setTimeout(() => {
+      E.bunnyWrap.classList.remove('do-pulse');
+      animating = false;
+      resumeMainVideo();
+    }, 3000);
+  });
+}
+
+// 撒花 + 煙火
+function fireConfetti(key) {
+  const colors = ['#F4A7BB','#C0506A','#FFB6C1','#FF69B4','#ffffff','#FFD700'];
+  const burst  = opts => confetti({ colors, disableForReducedMotion: true, ...opts });
+
+  burst({ particleCount: 90, spread: 85, origin: { y: 0.6 } });
+
+  if (key === 'week1' || key === 'month1') {
+    setTimeout(() => burst({ particleCount: 55, angle: 60,  spread: 55, origin: { x: 0,   y: 0.65 } }), 350);
+    setTimeout(() => burst({ particleCount: 55, angle: 120, spread: 55, origin: { x: 1,   y: 0.65 } }), 700);
+  }
+
+  if (key === 'month1') {
+    // 煙火特效
+    [1000, 1700, 2400].forEach(t => setTimeout(() =>
+      burst({
+        particleCount: 110,
+        startVelocity: 32,
+        spread: 360,
+        ticks: 65,
+        origin: { x: Math.random(), y: Math.random() * 0.45 },
+      }), t));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   RESET FLOW  (重置，5 種隨機反應)
+───────────────────────────────────────────────────────────────── */
+function triggerReset() {
+  if (animating) return;
+  animating = true;
+  E.resetBtn.disabled = true;
+
+  pauseMainVideo();
+  const r = pick(RESETS);
+  E.bunnyImg.src = pick(IMG[r.pool]);
+  showBubble(fmt(r.msg, state.name), false, 3600);
+
+  runAnim(E.bunnyWrap, `do-${r.anim}`, r.ms);
+  runAnim(E.bunnyImg, `do-${r.glow}`, 3200).then(() => {
+    state.startTime  = Date.now();
+    state.lastHour   = 0;
+    state.milestones = {};
+    save();
+
+    animating           = false;
+    E.resetBtn.disabled = false;
+    resumeMainVideo();
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   TIMER TICK  (每秒)
+───────────────────────────────────────────────────────────────── */
+let ticker = null;
+
+function tick() {
+  const elapsed = Date.now() - state.startTime;
+  const total   = Math.floor(elapsed / 1000);
+
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+
+  E.tD.textContent = pad(d);
+  E.tH.textContent = pad(h);
+  E.tM.textContent = pad(m);
+  E.tS.textContent = pad(s);
+
+  // ── 里程碑檢查（優先）──────────────────────────────────
+  for (const ms of MILESTONES) {
+    if (!state.milestones[ms.key] && total >= ms.secs) {
+      triggerMilestone(ms);
+      return;
+    }
+  }
+
+  // ── 每小時鼓勵 ─────────────────────────────────────────
+  const curHour = Math.floor(total / 3600);
+  if (curHour > 0 && curHour > state.lastHour) {
+    state.lastHour = curHour;
+    save();
+    triggerHourly();
+  }
+}
+
+function startTimer() {
+  if (ticker) clearInterval(ticker);
+  tick();
+  ticker = setInterval(tick, 1000);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   BOKEH  (背景光點)
+───────────────────────────────────────────────────────────────── */
+function buildBokeh() {
+  const container = $('bokeh');
+  const specs = [
+    { size: 90,  left: 8,  top: 12, dur: 4.2 },
+    { size: 120, left: 22, top: 55, dur: 5.5 },
+    { size: 70,  left: 42, top: 20, dur: 3.8 },
+    { size: 140, left: 60, top: 65, dur: 6.0 },
+    { size: 80,  left: 78, top: 30, dur: 4.8 },
+    { size: 100, left: 88, top: 70, dur: 5.2 },
+    { size: 60,  left: 52, top: 82, dur: 3.5 },
+  ];
+  specs.forEach((sp, i) => {
+    const el = document.createElement('span');
+    el.style.cssText = `
+      width:${sp.size}px; height:${sp.size}px;
+      left:${sp.left}%; top:${sp.top}%;
+      animation-duration:${sp.dur}s;
+      animation-delay:${-(i * 0.75)}s;
+    `;
+    container.appendChild(el);
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   MAIN SCREEN VIDEO SEQUENCER（主畫面影片輪播）
+───────────────────────────────────────────────────────────────── */
+let mVActIdx = 0;
+let mVRunning = false;
+
+function startMainVideo() {
+  const mv = document.getElementById('mVideo');
+  if (!mv) return;
+  mVRunning = true;
+  mVActIdx  = Math.floor(Math.random() * VIDEO_ACTS.length);
+  mv.addEventListener('ended', nextMainVideo);
+  _playMainVideo(VIDEO_ACTS[mVActIdx % VIDEO_ACTS.length]);
+  mVActIdx++;
+}
+
+function _playMainVideo(act) {
+  const mv = document.getElementById('mVideo');
+  mv.style.display = 'block';
+  E.bunnyImg.style.display = 'none';
+  mv.src = act.src;
+  mv.load();
+  mv.play().catch(() => {});
+}
+
+function nextMainVideo() {
+  if (!mVRunning) return;
+  const act = VIDEO_ACTS[mVActIdx % VIDEO_ACTS.length];
+  mVActIdx++;
+  const mv = document.getElementById('mVideo');
+  mv.src = act.src;
+  mv.load();
+  mv.play().catch(() => {});
+}
+
+function pauseMainVideo() {
+  const mv = document.getElementById('mVideo');
+  if (mv) { mv.pause(); mv.style.display = 'none'; }
+  E.bunnyImg.style.display = 'block';
+}
+
+function resumeMainVideo() {
+  const mv = document.getElementById('mVideo');
+  if (!mv || !mVRunning) return;
+  E.bunnyImg.style.display = 'none';
+  mv.style.display = 'block';
+  mv.play().catch(() => {});
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   SCREEN HELPERS
+───────────────────────────────────────────────────────────────── */
+function goMain() {
+  E.welcomeScreen.classList.remove('active');
+  E.mainScreen.classList.add('active');
+  const wv = document.getElementById('wVideo');
+  if (wv && !wv.paused) wv.pause();
+}
+
+function goWelcome() {
+  E.mainScreen.classList.remove('active');
+  E.welcomeScreen.classList.add('active');
+  E.nameInput.value = state.name;
+  E.startBtn.textContent = '確認更改 ✓';
+  // 暫停主畫面影片，啟動歡迎頁動畫
+  const mv = document.getElementById('mVideo');
+  if (mv) mv.pause();
+  startWelcomeAnim();
+  tryVideoMode();
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   INIT
+───────────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  buildBokeh();
+
+  // SVG 備用動畫先啟動；偵測到影片後 tryVideoMode() 會自動切換
+  startWelcomeAnim();
+  tryVideoMode();          // 嘗試影片模式（有影片才生效）
+
+  // ── 如果有存檔，直接進入主畫面 ────────────────────────
+  if (load()) {
+    stopWelcomeAnim();
+    E.greeting.textContent = `${state.name}，你做得到的！💕`;
+    goMain();
+    startTimer();
+    startMainVideo();
+  }
+
+  // ── 開始按鈕 ───────────────────────────────────────────
+  E.startBtn.addEventListener('click', () => {
+    const name = E.nameInput.value.trim();
+    if (!name) {
+      E.nameInput.style.borderColor = 'var(--rose)';
+      E.nameInput.focus();
+      setTimeout(() => { E.nameInput.style.borderColor = ''; }, 1500);
+      return;
+    }
+    E.startBtn.textContent = '開始戒酒！🐰';   // 還原按鈕文字
+
+    if (state.startTime > 0) {
+      // 從主畫面返回更改名稱：只更新名字，不重置計時器
+      state.name = name;
+      save();
+      E.greeting.textContent = `${name}，你做得到的！💕`;
+      stopWelcomeAnim();
+      goMain();
+      resumeMainVideo();
+    } else {
+      // 全新開始
+      state = { name, startTime: Date.now(), lastHour: 0, hourIdx: 0, milestones: {} };
+      save();
+      stopWelcomeAnim();
+      E.greeting.textContent = `${name}，你做得到的！💕`;
+      goMain();
+      startTimer();
+      startMainVideo();
+    }
+  });
+
+  // Enter 鍵送出
+  E.nameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') E.startBtn.click();
+  });
+
+  // 重置按鈕
+  E.resetBtn.addEventListener('click', triggerReset);
+
+  // 更改名稱按鈕
+  E.changeNameBtn.addEventListener('click', goWelcome);
+
+  // 切換 tab / 關閉前儲存
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state.startTime) save();
+  });
+  window.addEventListener('pagehide', () => {
+    if (state.startTime) save();
+  });
+});
+</script>
+</body>
+</html>
