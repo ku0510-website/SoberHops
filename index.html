@@ -913,48 +913,45 @@ function playNextVideo() {
   }, 350);
 }
 
-// 啟動影片模式（偵測第一支影片是否存在）
-function tryVideoMode() {
-  const probe = document.createElement('video');
-  probe.preload = 'metadata';
-  probe.src = VIDEO_ACTS[0].src;
+// 啟動影片模式（用 fetch HEAD 確認檔案存在，比 oncanplay 更可靠）
+async function tryVideoMode() {
+  try {
+    const res = await fetch(VIDEO_ACTS[0].src, { method: 'HEAD' });
+    if (!res.ok) return;   // 檔案不存在，維持 SVG 模式
+  } catch (e) {
+    return;                // 網路錯誤，維持 SVG 模式
+  }
 
-  probe.oncanplay = () => {
-    if (videoMode) return;           // 避免重複觸發
-    videoMode = true;
+  if (videoMode) return;
+  videoMode = true;
 
-    // 隱藏 SVG，顯示 video
-    const svg   = document.getElementById('svgBunny');
-    const video = document.getElementById('wVideo');
-    if (svg) svg.style.display = 'none';
-    video.style.display = 'block';
-    stopWelcomeAnim();
+  // 隱藏 SVG，顯示 video
+  const svg   = document.getElementById('svgBunny');
+  const video = document.getElementById('wVideo');
+  if (svg) svg.style.display = 'none';
+  video.style.display = 'block';
+  stopWelcomeAnim();
 
-    // 隨機起始
-    vActIdx = Math.floor(Math.random() * VIDEO_ACTS.length);
-    const firstAct = VIDEO_ACTS[vActIdx % VIDEO_ACTS.length];
-    vActIdx++;
+  // 隨機起始
+  vActIdx = Math.floor(Math.random() * VIDEO_ACTS.length);
+  const firstAct = VIDEO_ACTS[vActIdx % VIDEO_ACTS.length];
+  vActIdx++;
 
-    // 第一支直接載入播放（不等 fade delay）
-    video.src = firstAct.src;
-    video.load();
-    document.getElementById('wActivity').innerHTML = `<span>${firstAct.label}</span>`;
+  video.src = firstAct.src;
+  video.load();
+  document.getElementById('wActivity').innerHTML = `<span>${firstAct.label}</span>`;
 
-    video.play().catch(() => {
-      // 若自動播放被阻擋，等使用者第一次點擊再播
-      const startOnClick = () => {
-        video.play().catch(() => {});
-        document.removeEventListener('click', startOnClick);
-      };
-      document.addEventListener('click', startOnClick);
-    });
+  video.play().catch(() => {
+    // 若自動播放被阻擋，等使用者第一次點擊再播
+    const startOnClick = () => {
+      video.play().catch(() => {});
+      document.removeEventListener('click', startOnClick);
+    };
+    document.addEventListener('click', startOnClick);
+  });
 
-    // 每支影片結束後自動播下一支
-    video.addEventListener('ended', playNextVideo);
-  };
-
-  // onerror → 靜默失敗，維持 SVG 模式
-  probe.onerror = () => {};
+  // 每支影片結束後自動播下一支
+  video.addEventListener('ended', playNextVideo);
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -1266,9 +1263,15 @@ function buildBokeh() {
 let mVActIdx = 0;
 let mVRunning = false;
 
-function startMainVideo() {
+async function startMainVideo() {
   const mv = document.getElementById('mVideo');
   if (!mv) return;
+  // 確認影片存在才切換（避免 GitHub Pages 延遲導致空白）
+  try {
+    const res = await fetch(VIDEO_ACTS[0].src, { method: 'HEAD' });
+    if (!res.ok) return;
+  } catch (e) { return; }
+
   mVRunning = true;
   mVActIdx  = Math.floor(Math.random() * VIDEO_ACTS.length);
   mv.addEventListener('ended', nextMainVideo);
