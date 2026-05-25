@@ -906,12 +906,20 @@ function playNextVideo() {
   setTimeout(() => {
     video.src = act.src;
     video.load();
-    video.play().catch(() => {
-      // 若該片缺失，跳下一片
-      setTimeout(playNextVideo, 200);
-    });
-    activity.innerHTML = `<span>${act.label}</span>`;
     video.classList.remove('v-fade');
+
+    // 等影片真的開始播才更新標籤，確保文字與影片同步
+    const onPlaying = () => {
+      activity.innerHTML = `<span>${act.label}</span>`;
+      video.removeEventListener('playing', onPlaying);
+    };
+    video.addEventListener('playing', onPlaying);
+
+    video.play().catch(() => {
+      video.removeEventListener('playing', onPlaying);
+      // 播放失敗時直接跳下一支（不遞迴呼叫，避免 index 跳兩格）
+      activity.innerHTML = `<span>${act.label}</span>`;
+    });
   }, 350);
 }
 
